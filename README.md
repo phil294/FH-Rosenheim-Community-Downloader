@@ -5,11 +5,11 @@ Python: Automatic file downloader for material of Fachhochschule Rosenheim cours
 
 USAGE:
 
-	fhr.py -u <username> -p <password> -c <community> -o <output-folder> [-h]')
-	  -u, --username	Benutzerkennung [sXXXyyyyy]')
-	  -p, --password	Password')
+	fhr.py -u <username> -p <password> -c <community> -o <output-folder> [-h]'
+	  -u, --username	Benutzerkennung [sXXXyyyyy]'
+	  -p, --password	Password'
 	  -c, --community	Community subpath in url (after "/community/"), e.g. "inf-community"')
-	  -o, --output		Output folder. Default: "./community"')
+	  -o, --output		Output folder. Default: "./community"'
 	  -h, --help
 
 Preview
