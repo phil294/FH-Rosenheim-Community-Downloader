@@ -1,5 +1,5 @@
 # FH-Rosenheim-Community-Downloader
-Python: Automatic file downloader for material of Fachhochschule Rosenheim courses. Downloads files (if not already done so) in format. Needs proper testing.
+Python: Automatic file downloader for material of Fachhochschule Rosenheim courses. Needs proper testing. Downloads files (if not already done so) in format...
 
     "[output]/[course]/[category]/[date] [title] [name]"
 
