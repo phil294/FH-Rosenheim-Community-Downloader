@@ -12,27 +12,19 @@ import requests
 #import tkinter.messagebox as msgbox
 import os
 import datetime
+import sys
+import getopt
+import re
 
 url_FHR = "https://www.fh-rosenheim.de"
 url_FHR_idp = "https://idp.fh-rosenheim.de"
-
-
-
-######### CONFIG ###########
-USERNAME = ''
-PASSWORD = ''
-COMMUNITY = 'inf-community'
-OUTPUT_FOLDER = 'community'
-############################
-
-
 
 def info(s):
 	#msgbox.showwarning('FH Rosenheim Community Downloader', s)
 	print(s)
 def error(s):
 	info(s)
-	exit(1)
+	sys.exit(1)
 
 ## returns session
 def login(user, passw): 
@@ -72,8 +64,8 @@ def login(user, passw):
 	return session
 
 ## returns array of obj{id, name}
-def getCourses(session):
-	url_courses = url_FHR + "/community/" + COMMUNITY + "/lehrveranstaltungen/?m=1"
+def getCourses(session, community):
+	url_courses = url_FHR + "/community/" + community + "/lehrveranstaltungen/?m=1"
 	get = session.get(url_courses)
 	pq = PyQuery(get.text)
 	courses = []
@@ -90,8 +82,9 @@ def getCourses(session):
 	return courses
 
 ## returns array of obj(categoryName, urls: array of obj(fileName,fileTitle,fileUrl,fileDate))
-def getFilesUrlsByCourse(session, courseId, onlyNew=False):
-	url_material = url_FHR + "/community/" + COMMUNITY + "/lehrveranstaltungen/details/?tx_fhalumni_pi1[uid]=" + courseId
+# todo in unterfunktionen aufsplitten
+def getFilesUrlsByCourse(session, community, courseId):
+	url_material = url_FHR + "/community/" + community + "/lehrveranstaltungen/details/?tx_fhalumni_pi1[uid]=" + courseId
 	get = session.get(url_material)
 	pq = PyQuery(get.text)
 	files = [];
@@ -112,11 +105,7 @@ def getFilesUrlsByCourse(session, courseId, onlyNew=False):
 				'fileUrl': fileUrl,
 				'fileDate': fileDate
 			})
-		# find file details
-		if onlyNew:
-			filepattern = 'tr.multipow-file:not(.disabled)'
-		else:
-			filepattern = 'tr.multipow-file'
+		filepattern = 'tr.multipow-file'
 		h3.nextAll('table').eq(0).find(filepattern).each( lambda i,tr: addToUrls(PyQuery(tr)) )
 		files.append({
 			'categoryName': categoryName,
@@ -129,6 +118,7 @@ def getFilesUrlsByCourse(session, courseId, onlyNew=False):
 def downloadFileIfNotExist(session, url, folder, fileName):
 	if not os.path.exists(folder):
 		os.makedirs(folder) # recursively
+	fileName = re.sub('[^a-zA-Z0-9_- äöüÄÖÜß]', '_', fileName) # escape
 	dest = folder + "/" + fileName
 	if not os.path.exists(dest):
 		get = session.get(url, stream=True)
@@ -138,38 +128,71 @@ def downloadFileIfNotExist(session, url, folder, fileName):
 		return True
 	return False
 
+def usage():
+	info('FH Rosenheim: Community Files Downloader')
+	info('')
+	info('Usage: fhr.py -u <username> -p <password> -c <community> -o <output-folder> [-h]')
+	info('  -u, --username\tBenutzerkennung [sXXXyyyyy]')
+	info('  -p, --password\tPassword')
+	info('  -c, --community\tCommunity subpath in url (after "/community/"), e.g. "inf-community"')
+	info('  -o, --output\t\tOutput folder. Default: "./community"')
+	info('  -h, --help\t\tShow this help')
 
+def main(argv):
+	USERNAME = ""
+	PASSWORD = ""
+	COMMUNITY = ""
+	OUTPUT_FOLDER = "community"
+	try:
+		opts, args = getopt.getopt(argv, "u:p:c:o:h", ["username=","password=","community=","output=","help"])
+	except getopt.GetoptError:
+		usage()
+		error("")
+	for opt, arg in opts:
+		if opt in ('-h', '--help'):
+			usage()
+			sys.exit()
+		elif opt in ('-u', '--username'):
+			USERNAME = arg
+		elif opt in ('-p', '--password'):
+			PASSWORD = arg
+		elif opt in ('-c', '--community'):
+			COMMUNITY = arg
+		elif opt in ('-o', '--output'):
+			OUTPUT_FOLDER = arg
+	if len(USERNAME) < 1 or len(PASSWORD) < 1 or len(COMMUNITY) < 1 or len(OUTPUT_FOLDER) < 1:
+		usage()
+		error("")
 
-session = login(USERNAME, PASSWORD)
+	session = login(USERNAME, PASSWORD)
 
-courses = getCourses(session)
-if(len(courses) < 1):
-	error("Lehrveranstaltungen < 1")
+	courses = getCourses(session, COMMUNITY)
+	if(len(courses) < 1):
+		error("No courses available in community "+COMMUNITY)
 
-updateInfo = "New files in community:\n\n"
-for course in courses:
-	# Fach Unterordner
-	courseFolder = OUTPUT_FOLDER + "/" + course["name"]
-	file_urls = getFilesUrlsByCourse(session, course["id"]) # todo onlyNew=True
-	if len(file_urls) > 0:
-		updateInfo +=  "##### "+ course["name"] +" ####:\n"
-		for category in file_urls:
-			# array of obj(categoryName, urls: array of obj(fileName,fileTitle,fileUrl,fileDate))
+	updateInfo = "New files in community:\n\n"
+	for course in courses:
+		# Fach Unterordner
+		courseFolder = OUTPUT_FOLDER + "/" + course["name"]
+		file_urls = getFilesUrlsByCourse(session, COMMUNITY, course["id"])
+		if len(file_urls) > 0:
+			updateInfo +=  "##### "+ course["name"] +" ####:\n"
+			for category in file_urls:
+				# Kategorie Unterordner (Skripte, Übungen, ...)
+				categoryFolder = courseFolder + "/" + category['categoryName']
 
-			# Kategorie Unterordner (Skripte, Übungen, ...)
-			categoryFolder = courseFolder + "/" + category['categoryName']
+				for url in category['urls']:
+					fileUrl = url_FHR + url['fileUrl']
+					fileDate = datetime.datetime.strptime(url['fileDate'], "%d.%m.%Y").strftime("%Y%m%d")
+					fileTitle = url['fileTitle']
+					fileName = url['fileName']
+					# z.B. "community/DV-Anwendungen des Software-Engineering (DAS)/Skript/07.01.2017 09 Kanban - 09_PM_Kanban.pdf"
+					fileDest = fileDate + " " + fileTitle + " - " + fileName
+					downloaded = downloadFileIfNotExist(session, fileUrl, categoryFolder, fileDest)
+					if downloaded:
+						updateInfo += categoryFolder + "/" + fileDest + "\n"
+			updateInfo += "\n"
+	info(updateInfo)
 
-			for url in category['urls']:
-				fileUrl = url_FHR + url['fileUrl']
-				fileDate = datetime.datetime.strptime(url['fileDate'], "%d.%m.%Y").strftime("%Y%m%d")
-				fileTitle = url['fileTitle']
-				fileName = url['fileName']
-				# z.B. "community/DV-Anwendungen des Software-Engineering (DAS)/Skript/07.01.2017 09 Kanban - 09_PM_Kanban.pdf"
-				fileDest = fileDate + " " + fileTitle + " - " + fileName
-				downloaded = downloadFileIfNotExist(session, fileUrl, categoryFolder, fileDest)
-				if downloaded:
-					updateInfo += categoryFolder + "/" + fileDest + "\n"
-		updateInfo += "\n"
-
-info(updateInfo)
-exit(0)
+if __name__ == "__main__":
+	main(sys.argv[1:])
