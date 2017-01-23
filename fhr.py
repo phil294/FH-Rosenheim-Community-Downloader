@@ -118,7 +118,7 @@ def getFilesUrlsByCourse(session, community, courseId):
 def downloadFileIfNotExist(session, url, folder, fileName):
 	if not os.path.exists(folder):
 		os.makedirs(folder) # recursively
-	fileName = re.sub('[^a-zA-Z0-9_\- äöüÄÖÜß]', '_', fileName) # escape
+	fileName = re.sub('[^a-zA-Z0-9_\-. äöüÄÖÜß]', '_', fileName) # escape
 	dest = folder + "/" + fileName
 	if not os.path.exists(dest):
 		get = session.get(url, stream=True)
